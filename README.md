@@ -7,6 +7,7 @@ Fix HP printer driver installation on macOS Sequoia, Tahoe and later. The offici
 The `HewlettPackardPrinterDrivers.pkg` contains drivers for many HP models. This fix has been confirmed to work with:
 
 - HP LaserJet P1102 / Pro P1102 / Pro P1102w
+- HP LaserJet P1108
 - HP LaserJet Pro M1136
 - HP LaserJet M12 / M12W / M13 series
 - HP LaserJet P1007
@@ -21,8 +22,9 @@ It should also work with other HP LaserJet and OfficeJet models that use the sam
 1. Download the official [HP Mac Printer Driver](https://support.hp.com/us-en/drivers/closure/hp-laserjet-pro-p1102-drucker/model/4110303)
 2. Extract the `HewlettPackardPrinterDrivers.pkg` file from the `.dmg` file
 3. Download [`install-driver.sh`](install-driver.sh) and place it in the same directory as the `.pkg` file (or in an already-expanded package directory containing `Distribution`)
-4. Run:
+4. Open Terminal, navigate to that directory and run:
    ```bash
+   cd ~/path/to/your/folder
    chmod +x install-driver.sh
    ./install-driver.sh
    ```
@@ -32,7 +34,7 @@ It should also work with other HP LaserJet and OfficeJet models that use the sam
 
 1. Download the official [HP Mac Printer Driver](https://support.hp.com/us-en/drivers/closure/hp-laserjet-pro-p1102-drucker/model/4110303)
 2. Extract the `HewlettPackardPrinterDrivers.pkg` file from the `.dmg` file
-3. From a terminal, navigate to the folder where you extracted the `.pkg` file and run:
+3. Open Terminal, navigate to the folder where you extracted the `.pkg` file (`cd ~/path/to/your/folder`) and run:
    ```bash
    pkgutil --expand HewlettPackardPrinterDrivers.pkg drivers
    ```
