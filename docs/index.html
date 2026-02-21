@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HP Printer Fix for macOS</title>
+    <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background: #f5f5f7;
+            color: #1d1d1f;
+            line-height: 1.6;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 2rem 1rem;
+        }
+        .container { max-width: 640px; width: 100%; }
+        h1 { font-size: 2rem; font-weight: 700; margin-bottom: 0.25rem; }
+        .subtitle { color: #6e6e73; margin-bottom: 0.5rem; }
+        .privacy { font-size: 0.85rem; color: #86868b; margin-bottom: 1.5rem; }
+        #dropzone {
+            border: 2px dashed #d2d2d7;
+            border-radius: 16px;
+            padding: 3rem 2rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s;
+            background: white;
+            margin-bottom: 1.5rem;
+        }
+        #dropzone:hover, #dropzone.dragover {
+            border-color: #0071e3;
+            background: #f0f5ff;
+        }
+        #dropzone.processing {
+            border-color: #d2d2d7;
+            background: #fafafa;
+            cursor: default;
+            pointer-events: none;
+        }
+        .dropzone-icon { font-size: 3rem; margin-bottom: 0.75rem; }
+        .dropzone-text { font-size: 1.1rem; }
+        .dropzone-hint { font-size: 0.9rem; color: #86868b; margin-top: 0.5rem; }
+        #status {
+            padding: 1rem 1.25rem;
+            border-radius: 12px;
+            margin-bottom: 1.5rem;
+            font-size: 0.95rem;
+            display: none;
+        }
+        #status.info { display: block; background: #e8f0fe; color: #174ea6; }
+        #status.success { display: block; background: #e6f4ea; color: #137333; }
+        #status.error { display: block; background: #fce8e6; color: #c5221f; }
+        #downloadSection { display: none; margin-bottom: 2rem; }
+        #downloadSection.visible { display: block; }
+        #downloadBtn {
+            display: inline-block;
+            background: #0071e3;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 10px;
+            font-size: 1rem;
+            font-weight: 500;
+            text-decoration: none;
+            cursor: pointer;
+            border: none;
+        }
+        #downloadBtn:hover { background: #0077ed; }
+        .instructions {
+            background: white;
+            border-radius: 16px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+        }
+        .instructions h2 { font-size: 1.15rem; margin-bottom: 0.75rem; }
+        .instructions ol { padding-left: 1.5rem; }
+        .instructions li { margin-bottom: 0.4rem; }
+        .instructions a { color: #0071e3; }
+        .footer { font-size: 0.85rem; color: #86868b; text-align: center; }
+        .footer a { color: #0071e3; }
+        code {
+            background: #f0f0f0;
+            padding: 0.15em 0.4em;
+            border-radius: 4px;
+            font-size: 0.9em;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>HP Printer Fix for macOS</h1>
+        <p class="subtitle">Fix HP printer driver installation for macOS Sequoia, Tahoe and later.</p>
+        <p class="privacy">All processing happens in your browser. No files are uploaded anywhere.</p>
+
+        <div id="dropzone">
+            <div class="dropzone-icon">📦</div>
+            <div class="dropzone-text">Drop your <code>HewlettPackardPrinterDrivers.pkg</code> here</div>
+            <div class="dropzone-hint">or click to select file</div>
+        </div>
+        <input type="file" id="fileInput" accept=".pkg" style="display:none">
+
+        <div id="status"></div>
+
+        <div id="downloadSection">
+            <a id="downloadBtn">Download fixed package</a>
+        </div>
+
+        <div class="instructions">
+            <h2>How to use</h2>
+            <ol>
+                <li>Download the official <a href="https://support.hp.com/us-en/drivers/closure/hp-laserjet-pro-p1102-drucker/model/4110303" target="_blank" rel="noopener">HP Mac Printer Driver</a></li>
+                <li>Open the downloaded <code>.dmg</code> file</li>
+                <li>Find <code>HewlettPackardPrinterDrivers.pkg</code> inside and copy it to your Desktop</li>
+                <li>Drop that <code>.pkg</code> file in the area above</li>
+                <li>Download the fixed package and double-click it to install</li>
+            </ol>
+        </div>
+
+        <div class="footer">
+            <p>
+                <a href="https://github.com/pavelbinar/hp-printer-fix-macos" target="_blank" rel="noopener">GitHub</a>
+                &middot; No driver files are modified &mdash; only the installer's version check.
+            </p>
+        </div>
+    </div>
+
+    <noscript>
+        <style>#dropzone{display:none}</style>
+        <p style="text-align:center;padding:2rem;color:#c5221f">
+            JavaScript is required. Please enable it or use the
+            <a href="https://github.com/pavelbinar/hp-printer-fix-macos">command-line script</a> instead.
+        </p>
+    </noscript>
+
+    <script>
+    const XAR_MAGIC = 0x78617221;
+    const XAR_HEADER_SIZE = 28;
+    const VERSION_OLD = "system.version.ProductVersion, '15.0'";
+    const VERSION_NEW = "system.version.ProductVersion, '27.0'";
+
+    // --- Utility functions ---
+
+    function readUint64BE(view, offset) {
+        return view.getUint32(offset) * 0x100000000 + view.getUint32(offset + 4);
+    }
+
+    function writeUint64BE(view, offset, value) {
+        view.setUint32(offset, Math.floor(value / 0x100000000));
+        view.setUint32(offset + 4, value % 0x100000000);
+    }
+
+    async function sha1Hex(data) {
+        const hash = await crypto.subtle.digest('SHA-1', data);
+        return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
+    }
+
+    async function sha1Bytes(data) {
+        return new Uint8Array(await crypto.subtle.digest('SHA-1', data));
+    }
+
+    function tryInflate(data) {
+        try {
+            return pako.inflate(data);
+        } catch (e) {
+            return pako.inflateRaw(data);
+        }
+    }
+
+    // --- XAR manipulation ---
+
+    function parseHeader(buffer) {
+        if (buffer.byteLength < XAR_HEADER_SIZE) {
+            throw new Error('File is too small to be a valid .pkg file.');
+        }
+        const view = new DataView(buffer);
+        const magic = view.getUint32(0);
+        if (magic !== XAR_MAGIC) {
+            throw new Error(
+                'Not a valid .pkg file. Make sure you are using the extracted ' +
+                'HewlettPackardPrinterDrivers.pkg, not the .dmg file.'
+            );
+        }
+        return {
+            size: view.getUint16(4),
+            version: view.getUint16(6),
+            tocCompressedLength: readUint64BE(view, 8),
+            tocUncompressedLength: readUint64BE(view, 16),
+            checksumAlgorithm: view.getUint32(24)
+        };
+    }
+
+    function findDistribution(doc) {
+        for (const fileEl of doc.querySelectorAll('file')) {
+            const nameEl = fileEl.querySelector(':scope > name');
+            const typeEl = fileEl.querySelector(':scope > type');
+            if (nameEl && typeEl && nameEl.textContent === 'Distribution' && typeEl.textContent === 'file') {
+                const dataEl = fileEl.querySelector(':scope > data');
+                if (dataEl) return dataEl;
+            }
+        }
+        return null;
+    }
+
+    async function fixPackage(arrayBuffer) {
+        const data = new Uint8Array(arrayBuffer);
+
+        // 1. Parse header
+        const header = parseHeader(arrayBuffer);
+        const heapStart = header.size + header.tocCompressedLength;
+
+        // 2. Decompress TOC
+        const tocCompressed = data.slice(header.size, heapStart);
+        var tocBytes;
+        try {
+            tocBytes = tryInflate(tocCompressed);
+        } catch (e) {
+            throw new Error('Failed to decompress package table of contents.');
+        }
+        const tocXML = new TextDecoder().decode(tocBytes);
+
+        // 3. Parse TOC XML
+        const doc = new DOMParser().parseFromString(tocXML, 'text/xml');
+        if (doc.querySelector('parsererror')) {
+            throw new Error('Failed to parse package table of contents.');
+        }
+
+        // 4. Find Distribution file
+        const distDataEl = findDistribution(doc);
+        if (!distDataEl) {
+            throw new Error(
+                'Distribution file not found in the package. ' +
+                'Make sure this is HewlettPackardPrinterDrivers.pkg.'
+            );
+        }
+
+        const distOffset = parseInt(distDataEl.querySelector('offset').textContent);
+        const distLength = parseInt(distDataEl.querySelector('length').textContent);
+        const encodingEl = distDataEl.querySelector('encoding');
+        const isCompressed = encodingEl &&
+            encodingEl.getAttribute('style') === 'application/x-gzip';
+
+        // 5. Read and decompress Distribution data
+        const distRawData = data.slice(
+            heapStart + distOffset,
+            heapStart + distOffset + distLength
+        );
+
+        var distText;
+        if (isCompressed) {
+            try {
+                distText = new TextDecoder().decode(tryInflate(distRawData));
+            } catch (e) {
+                throw new Error('Failed to decompress Distribution file.');
+            }
+        } else {
+            distText = new TextDecoder().decode(distRawData);
+        }
+
+        // 6. Check and perform replacement
+        if (distText.indexOf(VERSION_OLD) === -1) {
+            if (distText.indexOf(VERSION_NEW) !== -1) {
+                throw new Error('This package has already been patched!');
+            }
+            throw new Error(
+                'macOS version check not found in this package. ' +
+                'It may not be the expected HP driver installer.'
+            );
+        }
+
+        const modifiedText = distText.split(VERSION_OLD).join(VERSION_NEW);
+        const modifiedBytes = new TextEncoder().encode(modifiedText);
+
+        // 7. Recompress
+        var newDistData;
+        if (isCompressed) {
+            newDistData = pako.deflate(modifiedBytes);
+        } else {
+            newDistData = modifiedBytes;
+        }
+
+        const sizeDiff = newDistData.length - distLength;
+
+        // 8. Update Distribution entry in TOC
+        distDataEl.querySelector('length').textContent = newDistData.length.toString();
+        distDataEl.querySelector('size').textContent = modifiedBytes.length.toString();
+
+        const arcChecksumEl = distDataEl.querySelector('archived-checksum');
+        if (arcChecksumEl) {
+            arcChecksumEl.textContent = await sha1Hex(newDistData);
+        }
+        const extChecksumEl = distDataEl.querySelector('extracted-checksum');
+        if (extChecksumEl) {
+            extChecksumEl.textContent = await sha1Hex(modifiedBytes);
+        }
+
+        // 9. Adjust heap offsets for entries after Distribution
+        if (sizeDiff !== 0) {
+            const allOffsetEls = doc.getElementsByTagName('offset');
+            for (var i = 0; i < allOffsetEls.length; i++) {
+                const el = allOffsetEls[i];
+                const parent = el.parentElement;
+
+                // Skip the Distribution entry's own offset
+                if (parent === distDataEl) continue;
+
+                // Skip the TOC checksum offset (always at heap position 0)
+                if (parent && parent.tagName === 'checksum' &&
+                    parent.parentElement && parent.parentElement.tagName === 'toc') {
+                    continue;
+                }
+
+                const offset = parseInt(el.textContent);
+                if (offset > distOffset) {
+                    el.textContent = (offset + sizeDiff).toString();
+                }
+            }
+        }
+
+        // 10. Serialize and compress new TOC
+        const newTocXML = new XMLSerializer().serializeToString(doc);
+        const newTocBytes = new TextEncoder().encode(newTocXML);
+        const newTocCompressed = pako.deflate(newTocBytes);
+
+        // 11. Compute new TOC checksum
+        const newTocChecksum = await sha1Bytes(newTocCompressed);
+
+        // 12. Build new heap by splicing in modified Distribution data
+        const heapBefore = data.slice(heapStart, heapStart + distOffset);
+        const heapAfter = data.slice(heapStart + distOffset + distLength);
+
+        const newHeapSize = heapBefore.length + newDistData.length + heapAfter.length;
+        const newHeap = new Uint8Array(newHeapSize);
+        var pos = 0;
+        newHeap.set(heapBefore, pos); pos += heapBefore.length;
+        newHeap.set(newDistData, pos); pos += newDistData.length;
+        newHeap.set(heapAfter, pos);
+
+        // Overwrite the TOC checksum at its position in the heap
+        const checksumEl = doc.querySelector('toc > checksum');
+        var checksumOffset = 0;
+        if (checksumEl) {
+            const cOffsetEl = checksumEl.querySelector('offset');
+            if (cOffsetEl) checksumOffset = parseInt(cOffsetEl.textContent);
+        }
+        newHeap.set(newTocChecksum, checksumOffset);
+
+        // 13. Build new header
+        const newHeader = new ArrayBuffer(XAR_HEADER_SIZE);
+        const hv = new DataView(newHeader);
+        hv.setUint32(0, XAR_MAGIC);
+        hv.setUint16(4, XAR_HEADER_SIZE);
+        hv.setUint16(6, 1);
+        writeUint64BE(hv, 8, newTocCompressed.length);
+        writeUint64BE(hv, 16, newTocBytes.length);
+        hv.setUint32(24, header.checksumAlgorithm);
+
+        // 14. Combine all parts
+        const totalSize = XAR_HEADER_SIZE + newTocCompressed.length + newHeapSize;
+        const result = new Uint8Array(totalSize);
+        pos = 0;
+        result.set(new Uint8Array(newHeader), pos); pos += XAR_HEADER_SIZE;
+        result.set(newTocCompressed, pos); pos += newTocCompressed.length;
+        result.set(newHeap, pos);
+
+        return result.buffer;
+    }
+
+    // --- UI ---
+
+    var dropzone = document.getElementById('dropzone');
+    var fileInput = document.getElementById('fileInput');
+    var statusEl = document.getElementById('status');
+    var downloadSection = document.getElementById('downloadSection');
+    var downloadBtn = document.getElementById('downloadBtn');
+    var currentBlobUrl = null;
+
+    function setStatus(type, message) {
+        statusEl.className = type;
+        statusEl.textContent = message;
+    }
+
+    function clearStatus() {
+        statusEl.className = '';
+        statusEl.textContent = '';
+    }
+
+    function hideDownload() {
+        downloadSection.className = '';
+        if (currentBlobUrl) {
+            URL.revokeObjectURL(currentBlobUrl);
+            currentBlobUrl = null;
+        }
+    }
+
+    function showDownload(blob) {
+        currentBlobUrl = URL.createObjectURL(blob);
+        downloadBtn.href = currentBlobUrl;
+        downloadBtn.download = 'HewlettPackardPrinterDrivers-fixed.pkg';
+        downloadSection.className = 'visible';
+    }
+
+    async function handleFile(file) {
+        clearStatus();
+        hideDownload();
+
+        if (!file) return;
+
+        dropzone.classList.add('processing');
+        setStatus('info', 'Processing package...');
+
+        try {
+            const arrayBuffer = await file.arrayBuffer();
+            const result = await fixPackage(arrayBuffer);
+            const blob = new Blob([result], { type: 'application/octet-stream' });
+
+            setStatus('success', 'Package fixed successfully! Click the button below to download.');
+            showDownload(blob);
+        } catch (e) {
+            setStatus('error', e.message);
+        } finally {
+            dropzone.classList.remove('processing');
+            fileInput.value = '';
+        }
+    }
+
+    // Drag and drop
+    dropzone.addEventListener('click', function() { fileInput.click(); });
+    fileInput.addEventListener('change', function(e) {
+        if (e.target.files.length > 0) handleFile(e.target.files[0]);
+    });
+    dropzone.addEventListener('dragover', function(e) {
+        e.preventDefault();
+        dropzone.classList.add('dragover');
+    });
+    dropzone.addEventListener('dragleave', function() {
+        dropzone.classList.remove('dragover');
+    });
+    dropzone.addEventListener('drop', function(e) {
+        e.preventDefault();
+        dropzone.classList.remove('dragover');
+        if (e.dataTransfer.files.length > 0) handleFile(e.dataTransfer.files[0]);
+    });
+    </script>
+</body>
+</html>

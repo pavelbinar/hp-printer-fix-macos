@@ -17,6 +17,10 @@ It should also work with other HP LaserJet and OfficeJet models that use the sam
 
 > If this fix works for your printer model, please [open an issue](../../issues) to let us know so we can add it to the list!
 
+## Web Tool (No Terminal Required)
+
+Use the online tool at **[pavelbinar.github.io/hp-printer-fix-macos](https://pavelbinar.github.io/hp-printer-fix-macos/)** to fix your driver package directly in the browser. Just drag and drop your `.pkg` file — no Terminal needed, no files uploaded anywhere.
+
 ## Automated Installation (Recommended)
 
 1. Download the official [HP Mac Printer Driver](https://support.hp.com/us-en/drivers/closure/hp-laserjet-pro-p1102-drucker/model/4110303)
