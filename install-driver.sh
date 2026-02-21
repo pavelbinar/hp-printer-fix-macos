@@ -1,7 +1,8 @@
 #!/bin/bash
 
-# HP LaserJet P1102 Driver Installer for macOS Sequoia
+# HP Printer Driver Installer for macOS Sequoia, Tahoe and later
 # Based on: https://blog.kartones.net/post/macos-sequoia-hp-laserjet-p1102-drivers/
+# Modifies the Distribution file to bypass the macOS version check (blocks versions > 15.0)
 
 # Print colored output
 print_green() {
@@ -16,29 +17,37 @@ print_red() {
     echo -e "\033[0;31m$1\033[0m"
 }
 
-# Check if HewlettPackardPrinterDrivers.pkg exists in the current directory
-if [ ! -f "HewlettPackardPrinterDrivers.pkg" ]; then
-    print_red "Error: HewlettPackardPrinterDrivers.pkg not found in the current directory."
-    print_yellow "Please extract the .pkg file from the HP driver .dmg file first."
+# Determine source: .pkg file or already-expanded package
+DRIVERS_DIR=""
+CLEANUP_AFTER=0
+
+if [ -f "HewlettPackardPrinterDrivers.pkg" ]; then
+    print_green "Expanding the HP driver package..."
+    pkgutil --expand HewlettPackardPrinterDrivers.pkg drivers
+    DRIVERS_DIR="drivers"
+    CLEANUP_AFTER=1
+elif [ -f "Distribution" ]; then
+    print_green "Using already-expanded package in current directory..."
+    DRIVERS_DIR="."
+else
+    print_red "Error: HewlettPackardPrinterDrivers.pkg or expanded package not found."
+    print_yellow "Please extract the .pkg from the HP driver .dmg, or run this script from the expanded package directory."
     exit 1
 fi
 
-# Create a temporary directory for the expanded package
-print_green "Expanding the HP driver package..."
-pkgutil --expand HewlettPackardPrinterDrivers.pkg drivers
-
 # Check if the Distribution file exists
-if [ ! -f "drivers/Distribution" ]; then
-    print_red "Error: Distribution file not found in the expanded package."
+if [ ! -f "$DRIVERS_DIR/Distribution" ]; then
+    print_red "Error: Distribution file not found."
     exit 1
 fi
 
 # Modify the Distribution file to bypass the macOS version check
-print_green "Modifying the Distribution file to support macOS Sequoia..."
-sed -i '' "s/system.version.ProductVersion, '15.0'/system.version.ProductVersion, '16.0'/g" drivers/Distribution
+# The installer blocks versions > 15.0; we change to 27.0 to cover Sequoia, Tahoe and beyond
+print_green "Modifying the Distribution file to bypass macOS version check..."
+sed -i '' "s/system.version.ProductVersion, '15.0'/system.version.ProductVersion, '27.0'/g" "$DRIVERS_DIR/Distribution"
 
 # Check if the modification was successful
-if grep -q "system.version.ProductVersion, '16.0'" drivers/Distribution; then
+if grep -q "system.version.ProductVersion, '27.0'" "$DRIVERS_DIR/Distribution"; then
     print_green "Distribution file successfully modified."
 else
     print_red "Error: Failed to modify the Distribution file."
@@ -46,21 +55,23 @@ else
 fi
 
 # Create the modified package
-print_green "Creating the modified package for macOS Sequoia..."
-pkgutil --flatten drivers HewlettPackardPrinterDrivers-sequoia.pkg
+print_green "Creating the modified package..."
+pkgutil --flatten "$DRIVERS_DIR" HewlettPackardPrinterDrivers-fixed.pkg
 
 # Check if the new package was created
-if [ ! -f "HewlettPackardPrinterDrivers-sequoia.pkg" ]; then
+if [ ! -f "HewlettPackardPrinterDrivers-fixed.pkg" ]; then
     print_red "Error: Failed to create the modified package."
     exit 1
 fi
 
-# Clean up
-print_green "Cleaning up temporary files..."
-rm -rf drivers
+# Clean up temporary directory (only if we expanded from .pkg)
+if [ "$CLEANUP_AFTER" -eq 1 ]; then
+    print_green "Cleaning up temporary files..."
+    rm -rf drivers
+fi
 
-print_green "✅ Installation package successfully created!"
-print_green "The modified driver package is: HewlettPackardPrinterDrivers-sequoia.pkg"
-print_yellow "You can now install the driver by double-clicking on HewlettPackardPrinterDrivers-sequoia.pkg"
+print_green "Installation package successfully created!"
+print_green "The modified driver package is: HewlettPackardPrinterDrivers-fixed.pkg"
+print_yellow "You can now install the driver by double-clicking on HewlettPackardPrinterDrivers-fixed.pkg"
 
 exit 0
