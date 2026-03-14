@@ -8,6 +8,7 @@ The `HewlettPackardPrinterDrivers.pkg` contains drivers for many HP models. This
 
 - HP LaserJet P1102 / Pro P1102 / Pro P1102w
 - HP LaserJet P1108
+- HP LaserJet Pro M1132 MFP
 - HP LaserJet Pro M1136
 - HP LaserJet M12 / M12W / M13 series
 - HP LaserJet P1007
