@@ -79,6 +79,15 @@
         .instructions ol { padding-left: 1.5rem; }
         .instructions li { margin-bottom: 0.4rem; }
         .instructions a { color: #0071e3; }
+        .note {
+            background: #fff8e5;
+            border: 1px solid #f1d18a;
+            border-radius: 12px;
+            color: #5f4200;
+            font-size: 0.95rem;
+            margin-bottom: 1.5rem;
+            padding: 1rem 1.25rem;
+        }
         .footer { font-size: 0.85rem; color: #86868b; text-align: center; }
         .footer a { color: #0071e3; }
         code {
@@ -92,7 +101,7 @@
 <body>
     <div class="container">
         <h1>HP Printer Fix for macOS</h1>
-        <p class="subtitle">Fix HP printer driver installation for macOS Sequoia, Tahoe and later.</p>
+        <p class="subtitle">Patch legacy HP printer driver packages for macOS Sequoia, Tahoe and later.</p>
         <p class="privacy">All processing happens in your browser. No files are uploaded anywhere.</p>
 
         <div id="dropzone">
@@ -108,21 +117,28 @@
             <a id="downloadBtn">Download fixed package</a>
         </div>
 
+        <div class="note">
+            <strong>macOS Big Sur and later:</strong> use the command-line script from GitHub when possible.
+            This web tool patches installer checks, but the full HP package can still fail on modern macOS
+            because it contains protected <code>/System</code> payload paths.
+        </div>
+
         <div class="instructions">
             <h2>How to use</h2>
             <ol>
-                <li>Download the official <a href="https://support.hp.com/us-en/drivers/closure/hp-laserjet-pro-p1102-drucker/model/4110303" target="_blank" rel="noopener">HP Mac Printer Driver</a></li>
+                <li>Download Apple's <a href="https://support.apple.com/en-us/106385" target="_blank" rel="noopener">HP 5.1.1 Printer Software Update</a></li>
                 <li>Open the downloaded <code>.dmg</code> file</li>
                 <li>Find <code>HewlettPackardPrinterDrivers.pkg</code> inside and copy it to your Desktop</li>
                 <li>Drop that <code>.pkg</code> file in the area above</li>
-                <li>Download the fixed package and double-click it to install</li>
+                <li>Download the fixed package</li>
+                <li>On modern macOS, prefer <code>install-driver.sh --setup-p1102</code> instead of double-clicking the full package</li>
             </ol>
         </div>
 
         <div class="footer">
             <p>
-                <a href="https://github.com/pavelbinar/hp-printer-fix-macos" target="_blank" rel="noopener">GitHub</a>
-                &middot; No driver files are modified &mdash; only the installer's version check.
+                <a href="https://github.com/berot3/hp-printer-fix-macos" target="_blank" rel="noopener">GitHub</a>
+                &middot; No payload driver files are modified &mdash; only installer checks are patched.
             </p>
         </div>
     </div>
@@ -131,7 +147,7 @@
         <style>#dropzone{display:none}</style>
         <p style="text-align:center;padding:2rem;color:#c5221f">
             JavaScript is required. Please enable it or use the
-            <a href="https://github.com/pavelbinar/hp-printer-fix-macos">command-line script</a> instead.
+            <a href="https://github.com/berot3/hp-printer-fix-macos">command-line script</a> instead.
         </p>
     </noscript>
 
@@ -167,6 +183,34 @@
         } catch (e) {
             return pako.inflateRaw(data);
         }
+    }
+
+    function patchFunctionCheck(text, functionName) {
+        const pattern = new RegExp('(function\\s+' + functionName + '\\s*\\(\\)\\s*\\{)(?!\\s*\\/\\/ hp-printer-fix)');
+        return text.replace(pattern, '$1\n            // hp-printer-fix: allow modern macOS.\n            return true;');
+    }
+
+    function patchDistributionText(distText) {
+        let modifiedText = distText;
+
+        if (modifiedText.indexOf(VERSION_OLD) !== -1) {
+            modifiedText = modifiedText.split(VERSION_OLD).join(VERSION_NEW);
+        }
+
+        modifiedText = patchFunctionCheck(modifiedText, 'installationCheck');
+        modifiedText = patchFunctionCheck(modifiedText, 'volumeCheck');
+
+        if (modifiedText === distText) {
+            if (distText.indexOf(VERSION_NEW) !== -1 || distText.indexOf('hp-printer-fix: allow modern macOS') !== -1) {
+                throw new Error('This package appears to have already been patched.');
+            }
+            throw new Error(
+                'Installer checks were not found in this package. ' +
+                'It may not be the expected HP driver installer.'
+            );
+        }
+
+        return modifiedText;
     }
 
     // --- XAR manipulation ---
@@ -259,18 +303,8 @@
             distText = new TextDecoder().decode(distRawData);
         }
 
-        // 6. Check and perform replacement
-        if (distText.indexOf(VERSION_OLD) === -1) {
-            if (distText.indexOf(VERSION_NEW) !== -1) {
-                throw new Error('This package has already been patched!');
-            }
-            throw new Error(
-                'macOS version check not found in this package. ' +
-                'It may not be the expected HP driver installer.'
-            );
-        }
-
-        const modifiedText = distText.split(VERSION_OLD).join(VERSION_NEW);
+        // 6. Patch installer checks
+        const modifiedText = patchDistributionText(distText);
         const modifiedBytes = new TextEncoder().encode(modifiedText);
 
         // 7. Recompress

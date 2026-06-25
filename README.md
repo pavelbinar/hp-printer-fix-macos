@@ -1,10 +1,12 @@
 # HP Printer Fix for macOS
 
-Fix HP printer driver installation on macOS Sequoia, Tahoe and later. The official HP drivers fail to install on newer macOS versions due to an OS version check in the installer package. This fix bypasses that check — no driver files are modified, only the installer's version restriction.
+Install legacy HP printer drivers on macOS Sequoia, Tahoe and later.
+
+This project started as a package-version-check bypass. Modern macOS versions need one extra step: the old HP package also tries to install files under protected `/System` paths, so the full package installer can fail even after the version check is patched. The command-line script now installs the usable CUPS driver files directly into `/Library/Printers`, fixes their permissions, and patches the HP P1100-series PPD so it does not force manual feed.
 
 ## Supported Printer Models
 
-The `HewlettPackardPrinterDrivers.pkg` contains drivers for many HP models. This fix has been confirmed to work with:
+The `HewlettPackardPrinterDrivers.pkg` package contains drivers for many HP models. This fix has been confirmed to work with:
 
 - HP LaserJet P1102 / Pro P1102 / Pro P1102w
 - HP LaserJet P1108
@@ -13,53 +15,89 @@ The `HewlettPackardPrinterDrivers.pkg` contains drivers for many HP models. This
 - HP LaserJet P1007
 - HP LaserJet 4000N
 
-It should also work with other HP LaserJet and OfficeJet models that use the same `HewlettPackardPrinterDrivers.pkg` installer.
+It should also work with other HP LaserJet and OfficeJet models included in the same Apple/HP driver package, but the automatic queue setup is currently specific to the HP LaserJet P1102 USB model.
 
-> If this fix works for your printer model, please [open an issue](../../issues) to let us know so we can add it to the list!
+## Download the HP Driver Package
 
-## Web Tool (No Terminal Required)
+Prefer Apple's download:
 
-Use the online tool at **[pavelbinar.github.io/hp-printer-fix-macos](https://pavelbinar.github.io/hp-printer-fix-macos/)** to fix your driver package directly in the browser. Just drag and drop your `.pkg` file — no Terminal needed, no files uploaded anywhere.
+- [HP 5.1.1 Printer Software Update - Apple Support](https://support.apple.com/en-us/106385)
+- Direct Apple DMG: `https://updates.cdn-apple.com/2021/macos/071-46903-20211101-0BD2764A-901C-41BA-9573-C17B8FDC4D90/HewlettPackardPrinterDrivers.dmg`
 
-## Automated Installation (Recommended)
+Apple marks the package as compatible with macOS 10.14 and not compatible with macOS 12 or newer. That warning is expected; this project works around the old installer limitations.
 
-1. Download the official [HP Mac Printer Driver](https://support.hp.com/us-en/drivers/closure/hp-laserjet-pro-p1102-drucker/model/4110303)
-2. Extract the `HewlettPackardPrinterDrivers.pkg` file from the `.dmg` file
-3. Download [`install-driver.sh`](install-driver.sh) and place it in the same directory as the `.pkg` file (or in an already-expanded package directory containing `Distribution`)
-4. Open Terminal, navigate to that directory and run:
+If Apple's download is unavailable in your browser, third-party mirrors such as [MacUpdate](https://apple-hp-printer-drivers.macupdate.com/) may host the same `HewlettPackardPrinterDrivers.dmg`, but prefer Apple when possible.
+
+## Recommended Installation
+
+1. Download the Apple HP driver `.dmg`.
+2. Open the `.dmg`.
+3. Copy `HewlettPackardPrinterDrivers.pkg` next to `install-driver.sh`.
+4. Connect and power on the printer.
+5. Run:
+
    ```bash
-   cd ~/path/to/your/folder
    chmod +x install-driver.sh
-   ./install-driver.sh
+   ./install-driver.sh --setup-p1102
    ```
-5. Double-click the generated `HewlettPackardPrinterDrivers-fixed.pkg` to install
 
-## Manual Installation
+The script will:
 
-1. Download the official [HP Mac Printer Driver](https://support.hp.com/us-en/drivers/closure/hp-laserjet-pro-p1102-drucker/model/4110303)
-2. Extract the `HewlettPackardPrinterDrivers.pkg` file from the `.dmg` file
-3. Open Terminal, navigate to the folder where you extracted the `.pkg` file (`cd ~/path/to/your/folder`) and run:
-   ```bash
-   pkgutil --expand HewlettPackardPrinterDrivers.pkg drivers
-   ```
-4. Open `drivers/Distribution` with any text editor
-5. Change `system.version.ProductVersion, '15.0'` to `system.version.ProductVersion, '27.0'`
-6. Save the file, then run:
-   ```bash
-   pkgutil --flatten drivers HewlettPackardPrinterDrivers-fixed.pkg
-   ```
-7. Clean up: delete the `drivers` folder and the original `.dmg` & `.pkg` files
-8. Double-click `HewlettPackardPrinterDrivers-fixed.pkg` to install
+- expand `HewlettPackardPrinterDrivers.pkg`
+- install the compatible CUPS driver files into `/Library/Printers`
+- skip protected `/System` package payload paths
+- fix ownership/permissions so CUPS accepts the legacy filters
+- patch P1100/P1560/P1600 PPDs to use automatic paper source instead of forced manual feed
+- add/update a connected HP LaserJet P1102 USB queue as `HP_LaserJet_P1102`
+- set A4 and the P1102 as the default printer
+
+You may be prompted for an administrator password because `/Library/Printers` and CUPS queue setup are system-level changes.
+
+## Other Script Modes
+
+Install driver files without adding a printer queue:
+
+```bash
+./install-driver.sh
+```
+
+Build a patched package for older workflows:
+
+```bash
+./install-driver.sh --build-pkg --no-install
+```
+
+Use a custom queue name:
+
+```bash
+./install-driver.sh --setup-p1102 --printer-name My_HP_P1102
+```
+
+## Web Tool
+
+The browser tool at [berot3.github.io/hp-printer-fix-macos](https://berot3.github.io/hp-printer-fix-macos/) can still patch the package version check without uploading files anywhere.
+
+For macOS Big Sur and later, especially Tahoe, prefer the command-line script. A fixed full package can still fail because the original payload contains protected `/System` paths.
+
+## Known Notes
+
+- The old `HP LaserJet Professional Utility.app` may crash on modern macOS/Rosetta. Printing does not depend on that app.
+- The HP filters are Intel `x86_64` binaries. On Apple Silicon Macs, Rosetta must be installed.
+- CUPS may warn that printer drivers are deprecated. That is expected for legacy PPD/filter drivers.
 
 ## How It Works
 
-The official HP driver installer checks the macOS version before installation and refuses to run on versions it doesn't recognize. This fix simply raises that version ceiling. No actual driver files are modified — only the installer's `Distribution` file is changed.
+For modern macOS, the script extracts the HP package payload and installs only the printer driver files that still belong under `/Library/Printers`. It avoids blocked `/System` payload entries, fixes file ownership, and patches the P1100-series PPD:
 
-This means the fix will likely work with future macOS releases too, by adjusting the version number accordingly.
+- adds `InputSlot Auto/Printer Default`
+- makes `Auto` the default paper source
+- removes the `MediaPosition 4` command from manual feed so P1102 devices without a Go button do not get stuck waiting for manual feed
+
+For older workflows, `--build-pkg` still patches the installer's `Distribution` checks and creates `HewlettPackardPrinterDrivers-fixed.pkg`.
 
 ## Disclaimer
 
-This is an unofficial workaround and not officially supported by HP. Use at your own risk.
+This is an unofficial workaround and not officially supported by HP or Apple. Use at your own risk.
 
 ## Credits
 
